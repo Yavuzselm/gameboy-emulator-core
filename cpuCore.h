@@ -50,6 +50,22 @@ class CpuCore {
     void incRP(uint8_t index);
     void decRP(uint8_t index);
 
+    void push(uint16_t value);
+    void pop(uint8_t index);
+
+    bool get_flag_z() const;
+    bool get_flag_n() const;
+    bool get_flag_h() const;
+    bool get_flag_c() const;
+
+    void set_flag_z(bool val);
+    void set_flag_n(bool val);
+    void set_flag_h(bool val);
+    void set_flag_c(bool val);
+
+    void add_a(uint8_t value, bool use_carry);
+    void sub_a(uint8_t vale, bool use_carry);
+
     uint16_t fetch16();
 
     void step(unsigned int& cycle);
