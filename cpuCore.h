@@ -33,6 +33,7 @@ class CpuCore {
    public:
     CpuCore(MMU& mmu);
 
+    // register file functions
     uint16_t getBC() const;
     uint16_t getDE() const;
     uint16_t getHL() const;
@@ -44,15 +45,14 @@ class CpuCore {
     void setAF(uint16_t value);
 
     uint8_t readReg(uint8_t index) const;
-    uint16_t readRP(uint8_t index) const;
+    uint16_t readRP(uint8_t index, bool flag_SP) const;
     void writeReg(uint8_t index, uint8_t value);
-    void writeRP(uint8_t index, uint16_t value);
-    void incRP(uint8_t index);
-    void decRP(uint8_t index);
+    void writeRP(uint8_t index, uint16_t value, bool flag_SP);
 
     void push(uint16_t value);
     void pop(uint8_t index);
 
+    // flag functions
     bool get_flag_z() const;
     bool get_flag_n() const;
     bool get_flag_h() const;
@@ -63,8 +63,18 @@ class CpuCore {
     void set_flag_h(bool val);
     void set_flag_c(bool val);
 
+    // 8 bit arithmetic functions
+
+    void incRP(uint8_t index);
+    void decRP(uint8_t index);
     void add_a(uint8_t value, bool use_carry);
     void sub_a(uint8_t vale, bool use_carry);
+    void cp_a(uint8_t value);
+    void inc(uint8_t index);
+    void dec(uint8_t index);
+    void and_a(uint8_t value);
+    void or_a(uint8_t value);
+    void xor_a(uint8_t value);
 
     uint16_t fetch16();
 

@@ -90,7 +90,7 @@ void CpuCore::writeReg(uint8_t index, uint8_t value) {
     }
 }
 
-uint16_t CpuCore::readRP(uint8_t index) const {
+uint16_t CpuCore::readRP(uint8_t index, bool flag_SP) const {
     switch (index) {
         case 0:
             return getBC();
@@ -99,13 +99,15 @@ uint16_t CpuCore::readRP(uint8_t index) const {
         case 2:
             return getHL();
         case 3:
-            return getAF();
-        default:
-            return m_registerFile.SP;
+            if (flag_SP) {
+                return m_registerFile.SP;
+            } else {
+                return getAF();
+            }
     }
 }
 
-void CpuCore::writeRP(uint8_t index, uint16_t value) {
+void CpuCore::writeRP(uint8_t index, uint16_t value, bool flag_SP) {
     switch (index) {
         case 0:
             setBC(value);
@@ -117,9 +119,11 @@ void CpuCore::writeRP(uint8_t index, uint16_t value) {
             setHL(value);
             break;
         case 3:
-            setAF(value);
-        default:
-            m_registerFile.SP = value;
+            if (flag_SP) {
+                m_registerFile.SP = value;
+            } else {
+                setAF(value);
+            }
     }
 }
 
@@ -170,7 +174,7 @@ void CpuCore::pop(uint8_t index) {
     m_registerFile.SP++;
     uint16_t high = m_mmu.read(m_registerFile.SP);
     m_registerFile.SP++;
-    writeRP(index, (high << 8) | low);
+    writeRP(index, (high << 8) | low, false);
 }
 
 bool CpuCore::get_flag_z() const { return (m_registerFile.F & 0x80) != 0; }
@@ -235,6 +239,70 @@ void CpuCore::sub_a(uint8_t value, bool use_carry) {
     m_registerFile.A = static_cast<uint8_t>(result);
 }
 
+void CpuCore::cp_a(uint8_t value) {
+    int16_t result = m_registerFile.A - value;
+
+    set_flag_z((result & 0xFF) == 0);
+    set_flag_n(true);
+    set_flag_c(result < 0);
+    set_flag_h(((m_registerFile.A & 0x0F) - (value & 0x0F)) < 0);
+}
+
+void CpuCore::inc(uint8_t index) {
+    uint8_t val = readReg(index);
+    uint8_t result = val + 1;
+
+    set_flag_z(result == 0);
+    set_flag_n(false);
+    set_flag_h((val & 0x0F) == 0x0F);
+
+    writeReg(index, static_cast<uint8_t>(result));
+}
+
+void CpuCore::dec(uint8_t index) {
+    uint8_t val = readReg(index);
+    uint8_t result = val - 1;
+
+    set_flag_z(result == 0);
+    set_flag_n(true);
+    set_flag_h((val & 0x0F) == 0);
+
+    writeReg(index, static_cast<uint8_t>(result));
+}
+
+void CpuCore::and_a(uint8_t value) {
+    uint8_t result = m_registerFile.A & value;
+
+    set_flag_z(result == 0);
+    set_flag_n(false);
+    set_flag_h(true);
+    set_flag_c(false);
+
+    m_registerFile.A = result;
+}
+
+void CpuCore::or_a(uint8_t value) {
+    uint8_t result = m_registerFile.A | value;
+
+    set_flag_z(result == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(0);
+
+    m_registerFile.A = result;
+}
+
+void CpuCore::xor_a(uint8_t value) {
+    uint8_t result = m_registerFile.A ^ value;
+
+    set_flag_z(result == 0);
+    set_flag_n(false);
+    set_flag_h(false);
+    set_flag_c(false);
+
+    m_registerFile.A = result;
+}
+
 uint16_t CpuCore::fetch16() {
     uint16_t low = m_mmu.read(m_registerFile.PC++);
     uint16_t high = m_mmu.read(m_registerFile.PC++);
@@ -245,11 +313,11 @@ void CpuCore::step(unsigned int& cycle) {
     m_opCode = m_mmu.read(m_registerFile.PC);
     m_registerFile.PC++;
 
-    uint8_t op_xx{(m_opCode >> 6) && 0x3};   //  6. and 7. bit
-    uint8_t op_yyy{(m_opCode >> 3) && 0x7};  // 3. 4. and 5. bit
-    uint8_t op_zzz{m_opCode && 0x7};         // 0. 1. and 2. bit
-    uint8_t op_q{op_yyy & 0b1};              // 3. bit
-    uint8_t op_pp{op_yyy >> 1};              // 4. and 5. bit
+    uint8_t op_xx{(m_opCode >> 6) & 0x3};   //  6. and 7. bit
+    uint8_t op_yyy{(m_opCode >> 3) & 0x7};  // 3. 4. and 5. bit
+    uint8_t op_zzz{m_opCode & 0x7};         // 0. 1. and 2. bit
+    uint8_t op_q{op_yyy & 0b1};             // 3. bit
+    uint8_t op_pp{op_yyy >> 1};             // 4. and 5. bit
 
     switch (op_xx) {
         case 0b01:  // ld r , r'
@@ -274,11 +342,12 @@ void CpuCore::step(unsigned int& cycle) {
 
                 case 0b001:
                     if (op_q == 0) {
-                        writeRP(op_pp, fetch16());
+                        writeRP(op_pp, fetch16(), true);
                         cycle = 12;
                     }
                     if (op_q == 1) {
                     }
+                    break;
 
                 case 0b110:  // ld r, n
                     writeReg(op_yyy, m_mmu.read(m_registerFile.PC));
@@ -294,16 +363,17 @@ void CpuCore::step(unsigned int& cycle) {
                         switch (op_pp) {
                             case 0:
                             case 1:
-                                writeReg(0b111, m_mmu.read(readRP(op_pp)));
+                                writeReg(0b111,
+                                         m_mmu.read(readRP(op_pp, true)));
                                 cycle = 8;
                                 break;
                             case 2:
-                                writeReg(0b111, m_mmu.read(readRP(0b10)));
+                                writeReg(0b111, m_mmu.read(readRP(0b10, true)));
                                 incRP(2);
                                 cycle = 8;
                                 break;
                             case 3:
-                                writeReg(0b111, m_mmu.read(readRP(0b10)));
+                                writeReg(0b111, m_mmu.read(readRP(0b10, true)));
                                 decRP(2);
                                 cycle = 8;
                                 break;
@@ -312,16 +382,19 @@ void CpuCore::step(unsigned int& cycle) {
                         switch (op_pp) {
                             case 0:
                             case 1:
-                                m_mmu.write(readRP(op_pp), m_registerFile.A);
+                                m_mmu.write(readRP(op_pp, true),
+                                            m_registerFile.A);
                                 cycle = 8;
                                 break;
                             case 2:
-                                m_mmu.write(readRP(0b10), m_registerFile.A);
+                                m_mmu.write(readRP(0b10, true),
+                                            m_registerFile.A);
                                 cycle = 8;
                                 incRP(2);
                                 break;
                             case 3:
-                                m_mmu.write(readRP(0b10), m_registerFile.A);
+                                m_mmu.write(readRP(0b10, true),
+                                            m_registerFile.A);
                                 cycle = 8;
                                 decRP(2);
                                 break;
@@ -332,18 +405,47 @@ void CpuCore::step(unsigned int& cycle) {
             }
             break;
 
-        case 0b10:
-            switch (op_yyy) { case 0: }
+        case 0b10:  // 8 bit alu instrucitons
+
+            uint8_t alu_val = readReg(op_zzz);
+            cycle = (op_zzz == 0b110) ? 8 : 4;
+
+            switch (op_yyy) {
+                case 0:
+                    add_a(alu_val, false);
+                    break;
+                case 1:
+                    add_a(alu_val, true);
+                    break;
+                case 2:
+                    sub_a(alu_val, false);
+                    break;
+                case 3:
+                    sub_a(alu_val, true);
+                    break;
+                case 4:
+                    and_a(alu_val);
+                    break;
+                case 5:
+                    xor_a(alu_val);
+                    break;
+                case 6:
+                    or_a(alu_val);
+                    break;
+                case 7:
+                    cp_a(alu_val);
+                    break;
+            }
             break;
         case 0b11:
-            if (op_zzz = 1 && op_q == 0) {
+            if (op_zzz == 1 && op_q == 0) {
                 pop(op_pp);
                 cycle = 12;
                 break;
             }
 
             if (op_zzz == 5 && op_q == 0) {
-                push(readRP(op_pp));
+                push(readRP(op_pp, false));
                 cycle = 16;
                 break;
             }
@@ -359,12 +461,10 @@ void CpuCore::step(unsigned int& cycle) {
                     break;
                 case 0xF2:
                     writeReg(0b111, m_mmu.read(0xFF00 + m_registerFile.C));
-                    m_registerFile.PC++;
                     cycle = 8;
                     break;
                 case 0xE2:
                     m_mmu.write(0xFF00 + m_registerFile.C, m_registerFile.A);
-                    m_registerFile.PC++;
                     cycle = 8;
                     break;
                 case 0xF0:
