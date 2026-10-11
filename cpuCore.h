@@ -27,6 +27,7 @@ struct RegisterFile {
 class CpuCore {
    private:
     RegisterFile m_registerFile{};
+    bool m_ime{};
     uint8_t m_opCode{};
     MMU& m_mmu;
 
@@ -63,6 +64,8 @@ class CpuCore {
     void set_flag_h(bool val);
     void set_flag_c(bool val);
 
+    bool cc_check(uint8_t index);
+
     // 8 bit arithmetic functions
 
     void incRP(uint8_t index);
@@ -77,6 +80,7 @@ class CpuCore {
     void xor_a(uint8_t value);
 
     uint16_t fetch16();
+    void ret_f();
 
     void step(unsigned int& cycle);
 };

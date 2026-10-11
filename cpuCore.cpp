@@ -295,10 +295,34 @@ void CpuCore::xor_a(uint8_t value) {
     m_registerFile.A = result;
 }
 
+bool CpuCore::cc_check(uint8_t index) {
+    switch (index) {
+        case 0b00:
+            return get_flag_z() == false;
+        case 0b01:
+            return get_flag_z() == true;
+        case 0b10:
+            return get_flag_c() == false;
+        case 0b11:
+            return get_flag_c() == true;
+    }
+}
+
 uint16_t CpuCore::fetch16() {
-    uint16_t low = m_mmu.read(m_registerFile.PC++);
-    uint16_t high = m_mmu.read(m_registerFile.PC++);
+    uint16_t low = m_mmu.read(m_registerFile.PC);
+    m_registerFile.PC++;
+    uint16_t high = m_mmu.read(m_registerFile.PC);
+    m_registerFile.PC++;
+
     return (high << 8) | low;
+}
+
+void CpuCore::ret_f() {
+    uint16_t lsb = m_mmu.read(m_registerFile.SP);
+    m_registerFile.SP++;
+    uint16_t msb = m_mmu.read(m_registerFile.SP);
+    m_registerFile.SP++;
+    m_registerFile.PC = (msb << 8) | lsb;
 }
 
 void CpuCore::step(unsigned int& cycle) {
@@ -312,31 +336,52 @@ void CpuCore::step(unsigned int& cycle) {
     uint8_t op_pp{op_yyy >> 1};             // 4. and 5. bit
 
     switch (op_xx) {
-        case 0b01:  // ld r , r'
-            writeReg(op_yyy, readReg(op_zzz));
-            if (op_zzz == 0b110 || op_yyy == 0b110)  // hl access takes 2 m cycle
-                cycle = 8;
-            else
-                cycle = 4;
-            break;
-
         case 0b00:
             switch (op_zzz) {
-                case 0b000:
+                case 0b000:  // completed except stop instruction
                     switch (op_yyy) {
-                        case 1:
+                        case 0:  // NOP no operation
+                            cycle = 4;
+                            break;
+
+                        case 1:  // LD [a16], SP
                             m_mmu.write(fetch16(), m_registerFile.SP);
                             cycle = 20;
                             break;
+
+                        case 2:  // STOP  TODO
+                            break;
+
+                        case 3: {  // JR r8 relative jump
+                            int8_t offset = m_mmu.read(m_registerFile.PC);
+                            m_registerFile.PC++;
+                            m_registerFile.PC += offset;
+                            cycle = 12;
+                            break;
+                        }
+                        case 4:
+                        case 5:
+                        case 6:
+                        case 7: {  // JR cc r8 relative jump conditional
+                            int8_t offset = static_cast<int8_t>(m_mmu.read(m_registerFile.PC));
+                            m_registerFile.PC++;
+
+                            if (cc_check(op_yyy & 0b011)) {
+                                m_registerFile.PC += offset;
+                                cycle = 12;
+                            } else {
+                                cycle = 8;
+                            }
+                            break;
+                        }
                     }
                     break;
 
                 case 0b001:
-                    if (op_q == 0) {
+                    if (op_q == 0) {  // q == 0
                         writeRP(op_pp, fetch16(), true);
                         cycle = 12;
-                    }
-                    if (op_q == 1) {
+                    } else {  // q == 1
                         uint16_t val = readRP(op_pp, true);
                         uint16_t hl = getHL();
                         uint32_t result = static_cast<uint32_t>(val) + static_cast<uint32_t>(hl);
@@ -353,7 +398,7 @@ void CpuCore::step(unsigned int& cycle) {
                 case 0b010:
                     cycle = 8;
 
-                    if (op_q) {  // Read from memory into A (LD A, [..])
+                    if (op_q == 1) {  // Read from memory into A (LD A, [..])
                         switch (op_pp) {
                             case 0:
                             case 1:
@@ -399,6 +444,7 @@ void CpuCore::step(unsigned int& cycle) {
                     cycle = (op_yyy == 0b110) ? 12 : 4;
                     inc(op_yyy);
                     break;
+
                 case 0b101:
                     cycle = (op_yyy == 0b110) ? 12 : 4;
                     dec(op_yyy);
@@ -508,6 +554,20 @@ void CpuCore::step(unsigned int& cycle) {
             }
             break;
 
+        case 0b01:
+            if (op_yyy == 0b110 && op_zzz == 0b110) {  // HALT   TODO
+                cycle = 4;
+                break;
+            }
+
+            // ld r , r'
+            writeReg(op_yyy, readReg(op_zzz));
+            if (op_zzz == 0b110 || op_yyy == 0b110)  // hl access takes 2 m cycle
+                cycle = 8;
+            else
+                cycle = 4;
+            break;
+
         case 0b10:  // 8 bit alu instrucitons
 
             uint8_t alu_val = readReg(op_zzz);
@@ -540,112 +600,250 @@ void CpuCore::step(unsigned int& cycle) {
                     break;
             }
             break;
+
         case 0b11:
-            if (op_zzz == 0b001 && op_q == 0) {
-                pop(op_pp);
-                cycle = 12;
-                break;
-            }
+            switch (op_zzz) {
+                case 0b000:
+                    switch (op_yyy) {
+                        case 0:
+                        case 1:
+                        case 2:
+                        case 3:
+                            if (cc_check(op_yyy & 0b011)) {  // RET cc[y]
+                                ret_f();
+                                cycle = 20;
+                            } else {
+                                cycle = 8;
+                            }
+                            break;
 
-            if (op_zzz == 0b101 && op_q == 0) {
-                push(readRP(op_pp, false));
-                cycle = 16;
-                break;
-            }
+                        case 4: {  // LDH (n), A: Load from accumulator
+                            uint16_t adress = 0xFF00 | static_cast<uint16_t>(m_mmu.read(m_registerFile.PC));
+                            m_registerFile.PC++;
+                            m_mmu.write(adress, m_registerFile.A);
+                            cycle = 12;
+                            break;
+                        }
 
-            if (op_zzz == 6) {
-                uint8_t alu_imm_val = m_mmu.read(m_registerFile.PC);
-                m_registerFile.PC++;
-                cycle = 8;
+                        case 5: {  // ADD SP, e: Add to stack pointer (relative)
+                            uint8_t raw_byte = m_mmu.read(m_registerFile.PC);
+                            int8_t offset = static_cast<int8_t>(raw_byte);
+                            m_registerFile.PC++;
 
-                switch (op_yyy) {
-                    case 0:
-                        add_a(alu_imm_val, false);
-                        break;
-                    case 1:
-                        add_a(alu_imm_val, true);
-                        break;
-                    case 2:
-                        sub_a(alu_imm_val, false);
-                        break;
-                    case 3:
-                        sub_a(alu_imm_val, true);
-                        break;
-                    case 4:
-                        and_a(alu_imm_val);
-                        break;
-                    case 5:
-                        xor_a(alu_imm_val);
-                        break;
-                    case 6:
-                        or_a(alu_imm_val);
-                        break;
-                    case 7:
-                        cp_a(alu_imm_val);
-                        break;
-                }
-            }
+                            set_flag_z(false);
+                            set_flag_n(false);
+                            set_flag_h(((m_registerFile.SP & 0x0F) + (raw_byte & 0x0F)) > 0x0F);
+                            set_flag_c(((m_registerFile.SP & 0xFF) + (raw_byte & 0xFF)) > 0xFF);
 
-            switch (m_opCode) {
-                case 0xFA:
-                    writeReg(0b111, m_mmu.read(fetch16()));
+                            m_registerFile.SP = static_cast<uint16_t>(m_registerFile.SP + offset);
+
+                            cycle = 16;
+                            break;
+                        }
+                        case 6:  // LDH A, (n): Load accumulator (direct 0xFF00+n)
+                            writeReg(0b111, m_mmu.read(0xFF00 + m_mmu.read(m_registerFile.PC)));
+                            m_registerFile.PC++;
+                            cycle = 12;
+                            break;
+
+                        case 7: {  // LD HL, SP+e: Load HL from adjusted stack pointer
+                            uint8_t raw_byte = m_mmu.read(m_registerFile.PC);
+                            int8_t offset = static_cast<int8_t>(raw_byte);
+                            m_registerFile.PC++;
+                            setHL(static_cast<uint16_t>(m_registerFile.SP + offset));
+
+                            set_flag_z(false);
+                            set_flag_n(false);
+                            set_flag_h(((m_registerFile.SP & 0x0F) + (raw_byte & 0x0F)) > 0x0F);
+                            set_flag_c(((m_registerFile.SP & 0xFF) + (raw_byte & 0xFF)) > 0xFF);
+
+                            cycle = 12;
+                            break;
+                        }
+                    }
+                    break;
+                case 0b001:
+                    if (op_q == 0) {
+                        pop(op_pp);
+                        cycle = 12;
+
+                    } else {
+                        switch (op_pp) {
+                            case 0: {  // RET
+                                ret_f();
+                                cycle = 16;
+                                break;
+                            }
+
+                            case 1: {  // RETI
+                                ret_f();
+                                m_ime = true;
+                                cycle = 16;
+                                break;
+                            }
+
+                            case 2: {  // JP HL
+                                m_registerFile.PC = getHL();
+                                cycle = 4;
+                                break;
+                            }
+
+                            case 3: {  // LD SP, HL
+                                m_registerFile.SP = getHL();
+                                cycle = 8;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+
+                case 0b010:
+                    switch (op_yyy) {
+                        case 0:
+                        case 1:
+                        case 2:
+                        case 3: {  // JP cc[y], a16
+                            uint16_t nn = fetch16();
+
+                            if (cc_check(op_yyy & 0b011)) {
+                                m_registerFile.PC = nn;
+                                cycle = 16;
+                            } else {
+                                cycle = 12;
+                            }
+                            break;
+                        }
+
+                        case 4:
+                            m_mmu.write(0xFF00 + m_registerFile.C, m_registerFile.A);
+                            cycle = 8;
+                            break;
+
+                        case 5:
+                            m_mmu.write(fetch16(), m_registerFile.A);
+                            cycle = 16;
+                            break;
+                        case 6:
+                            writeReg(0b111, m_mmu.read(0xFF00 + m_registerFile.C));
+                            cycle = 8;
+                            break;
+                        case 7:
+                            writeReg(0b111, m_mmu.read(fetch16()));
+                            cycle = 16;
+                            break;
+                    }
+                    break;
+
+                case 0b011:
+                    switch (op_yyy) {
+                        case 0:
+                            m_registerFile.PC = fetch16();
+                            cycle = 16;
+                            break;
+                        case 1:
+                            // triggerCB() -- will implement later
+                            break;
+                        case 2:  // illegal unmapped
+                        case 3:
+                        case 4:
+                        case 5:
+                            break;
+                        case 6:
+                            m_ime = false;
+                            cycle = 4;
+                            break;
+                        case 7:
+                            m_ime = true;
+                            cycle = 4;
+                            break;
+                    }
+                    break;
+
+                case 0b100:
+                    switch (op_yyy) {
+                        case 0:
+                        case 1:
+                        case 2:
+                        case 3: {
+                            uint16_t nn = fetch16();
+
+                            if (cc_check(op_yyy & 0b011)) {
+                                push(m_registerFile.PC);
+                                m_registerFile.PC = nn;
+                                cycle = 24;
+                            } else {
+                                cycle = 12;
+                            }
+                            break;
+                        }
+                        case 4:
+                        case 5:
+                        case 6:
+                        case 7:  // illegal unmapped
+                            break;
+                    }
+                    break;
+
+                case 0b101:
+                    if (op_q == 0) {
+                        push(readRP(op_pp, false));
+                        cycle = 16;
+                        break;
+                    } else {
+                        switch (op_pp) {
+                            case 0: {
+                                uint16_t nn = fetch16();
+                                push(m_registerFile.PC);
+                                m_registerFile.PC = nn;
+                                cycle = 24;
+                                break;
+                            }
+                            case 1:  // unmapped -- illegal
+                            case 2:
+                            case 3:
+                                break;
+                        }
+                    }
+                    break;
+
+                case 0b110: {
+                    uint8_t alu_imm_val = m_mmu.read(m_registerFile.PC);
+                    m_registerFile.PC++;
+                    cycle = 8;
+
+                    switch (op_yyy) {
+                        case 0:
+                            add_a(alu_imm_val, false);
+                            break;
+                        case 1:
+                            add_a(alu_imm_val, true);
+                            break;
+                        case 2:
+                            sub_a(alu_imm_val, false);
+                            break;
+                        case 3:
+                            sub_a(alu_imm_val, true);
+                            break;
+                        case 4:
+                            and_a(alu_imm_val);
+                            break;
+                        case 5:
+                            xor_a(alu_imm_val);
+                            break;
+                        case 6:
+                            or_a(alu_imm_val);
+                            break;
+                        case 7:
+                            cp_a(alu_imm_val);
+                            break;
+                    }
+                } break;
+
+                case 0b111:
+                    push(m_registerFile.PC);
+                    m_registerFile.PC = op_yyy * 8;
                     cycle = 16;
                     break;
-                case 0xEA:
-                    m_mmu.write(fetch16(), m_registerFile.A);
-                    cycle = 16;
-                    break;
-                case 0xF2:
-                    writeReg(0b111, m_mmu.read(0xFF00 + m_registerFile.C));
-                    cycle = 8;
-                    break;
-                case 0xE2:
-                    m_mmu.write(0xFF00 + m_registerFile.C, m_registerFile.A);
-                    cycle = 8;
-                    break;
-                case 0xF0:
-                    writeReg(0b111, m_mmu.read(0xFF00 + m_mmu.read(m_registerFile.PC)));
-                    m_registerFile.PC++;
-                    cycle = 12;
-                    break;
-                case 0xE0:
-                    m_mmu.write(0xFF00 + m_registerFile.C, m_registerFile.A);
-                    m_registerFile.PC++;
-                    cycle = 12;
-                    break;
-                case 0xF9:
-                    m_registerFile.SP = getHL();
-                    cycle = 8;
-                    break;
-                case 0xF8: {
-                    uint8_t raw_byte = m_mmu.read(m_registerFile.PC);
-                    int8_t offset = static_cast<int8_t>(raw_byte);
-                    m_registerFile.PC++;
-                    setHL(static_cast<uint16_t>(m_registerFile.SP + offset));
-
-                    set_flag_z(false);
-                    set_flag_n(false);
-                    set_flag_h(((m_registerFile.SP & 0x0F) + (raw_byte & 0x0F)) > 0x0F);
-                    set_flag_c(((m_registerFile.SP & 0xFF) + (raw_byte & 0xFF)) > 0xFF);
-
-                    cycle = 12;
-                    break;
-                }
-                case 0xE8: {
-                    uint8_t raw_byte = m_mmu.read(m_registerFile.PC);
-                    int8_t offset = static_cast<int8_t>(raw_byte);
-                    m_registerFile.PC++;
-
-                    set_flag_z(false);
-                    set_flag_n(false);
-                    set_flag_h(((m_registerFile.SP & 0x0F) + (raw_byte & 0x0F)) > 0x0F);
-                    set_flag_c(((m_registerFile.SP & 0xFF) + (raw_byte & 0xFF)) > 0xFF);
-
-                    m_registerFile.SP = static_cast<uint16_t>(m_registerFile.SP + offset);
-
-                    cycle = 16;
-                    break;
-                }
             }
             break;
     }
