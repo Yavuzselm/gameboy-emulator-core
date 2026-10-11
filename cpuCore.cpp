@@ -326,6 +326,11 @@ void CpuCore::ret_f() {
 }
 
 void CpuCore::step(unsigned int& cycle) {
+    if (m_halted) {
+        cycle = 4;
+        return;
+    }
+
     m_opCode = m_mmu.read(m_registerFile.PC);
     m_registerFile.PC++;
 
@@ -349,7 +354,9 @@ void CpuCore::step(unsigned int& cycle) {
                             cycle = 20;
                             break;
 
-                        case 2:  // STOP  TODO
+                        case 2:  // STOP
+                            m_registerFile.PC++;
+                            cycle = 4;
                             break;
 
                         case 3: {  // JR r8 relative jump
@@ -555,7 +562,8 @@ void CpuCore::step(unsigned int& cycle) {
             break;
 
         case 0b01:
-            if (op_yyy == 0b110 && op_zzz == 0b110) {  // HALT   TODO
+            if (op_yyy == 0b110 && op_zzz == 0b110) {  // HALT
+                m_halted = true;
                 cycle = 4;
                 break;
             }
@@ -741,7 +749,7 @@ void CpuCore::step(unsigned int& cycle) {
                             cycle = 16;
                             break;
                         case 1:
-                            // triggerCB() -- will implement later
+                            step_CB(cycle);
                             break;
                         case 2:  // illegal unmapped
                         case 3:
@@ -845,6 +853,96 @@ void CpuCore::step(unsigned int& cycle) {
                     cycle = 16;
                     break;
             }
+            break;
+    }
+}
+
+void CpuCore::step_CB(unsigned int& cycle) {
+    m_opCode = m_mmu.read(m_registerFile.PC);
+    m_registerFile.PC++;
+
+    uint8_t op_xx{(m_opCode >> 6) & 0x3};   //  6. and 7. bit
+    uint8_t op_yyy{(m_opCode >> 3) & 0x7};  // 3. 4. and 5. bit
+    uint8_t op_zzz{m_opCode & 0x7};
+
+    switch (op_xx) {
+        uint8_t val = readReg(op_zzz);
+
+        case 0:
+            uint8_t result{};
+            cycle = (op_zzz == 6) ? 16 : 8;
+            switch (op_yyy) {
+                case 0: {  // RLC
+                    uint8_t b7 = val >> 7;
+                    result = (val << 1) | b7;
+                    set_flag_c(b7 != 0);
+                    break;
+                }
+                case 1: {  // RRC
+                    uint8_t b0 = val & 0x01;
+                    result = (val >> 1) | (b0 << 7);
+                    set_flag_c(b0 != 0);
+                    break;
+                }
+                case 2: {  // RL
+                    uint8_t b7 = val >> 7;
+                    uint8_t old_carry = get_flag_c() ? 1 : 0;
+                    result = (val << 1) | old_carry;
+                    set_flag_c(b7 != 0);
+                    break;
+                }
+                case 3: {  // RR
+                    uint8_t b0 = val & 0x01;
+                    uint8_t old_carry = get_flag_c() ? 1 : 0;
+                    result = (val >> 1) | (old_carry << 7);
+                    set_flag_c(b0 != 0);
+                    break;
+                }
+                case 4: {  // SLA
+                    uint8_t b7 = val >> 7;
+                    result = (val << 1);
+                    set_flag_c(b7 != 0);
+                    break;
+                }
+                case 5: {  // SRA
+                    uint8_t b0 = val & 0x01;
+                    uint8_t b7 = val & 0x80;
+                    result = (val >> 1) | (b7);
+                    set_flag_c(b0 != 0);
+                    break;
+                }
+                case 6: {  // SWAP
+                    uint8_t high = (val & 0xF0) >> 4;
+                    uint8_t low = (val & 0x0F) << 4;
+                    result = low | high;
+                    set_flag_c(false);
+                    break;
+                }
+                case 7: {  // SRL
+                    uint8_t b0 = val & 0x01;
+                    result = (val >> 1);
+                    set_flag_c(b0 != 0);
+                    break;
+                }
+            }
+            set_flag_z(result == 0);
+            set_flag_n(false);
+            set_flag_h(false);
+            writeReg(op_zzz, result);
+            break;
+        case 1:  // BIT
+            set_flag_z((val & (1 << op_yyy)) == 0);
+            set_flag_n(false);
+            set_flag_h(true);
+            cycle = (op_zzz == 6) ? 12 : 8;
+            break;
+        case 2:  // RES
+            writeReg(op_zzz, val & ~(1 << op_yyy));
+            cycle = (op_zzz == 6) ? 16 : 8;
+            break;
+        case 3:  // SET
+            writeReg(op_zzz, val | (1 << op_yyy));
+            cycle = (op_zzz == 6) ? 16 : 8;
             break;
     }
 }

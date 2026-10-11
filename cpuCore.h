@@ -17,17 +17,13 @@ struct RegisterFile {
     uint8_t L{};
     uint8_t IR{};
     uint8_t IE{};
-
-    // bool Z{};  maybe i can use them instead of F register
-    // bool N{};
-    // bool H{};
-    // bool C{};
 };
 
 class CpuCore {
    private:
     RegisterFile m_registerFile{};
     bool m_ime{};
+    bool m_halted{};
     uint8_t m_opCode{};
     MMU& m_mmu;
 
@@ -83,4 +79,5 @@ class CpuCore {
     void ret_f();
 
     void step(unsigned int& cycle);
+    void step_CB(unsigned int& cycle);
 };
