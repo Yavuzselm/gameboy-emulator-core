@@ -80,4 +80,5 @@ class CpuCore {
 
     void step(unsigned int& cycle);
     void step_CB(unsigned int& cycle);
+    void handle_interrupt(unsigned int& cycle);
 };

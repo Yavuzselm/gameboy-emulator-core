@@ -326,6 +326,14 @@ void CpuCore::ret_f() {
 }
 
 void CpuCore::step(unsigned int& cycle) {
+    cycle = 0;
+
+    handle_interrupt(cycle);
+
+    if (cycle > 0) {
+        return;
+    }
+
     if (m_halted) {
         cycle = 4;
         return;
@@ -930,19 +938,52 @@ void CpuCore::step_CB(unsigned int& cycle) {
             set_flag_h(false);
             writeReg(op_zzz, result);
             break;
+
         case 1:  // BIT
             set_flag_z((val & (1 << op_yyy)) == 0);
             set_flag_n(false);
             set_flag_h(true);
             cycle = (op_zzz == 6) ? 12 : 8;
             break;
+
         case 2:  // RES
             writeReg(op_zzz, val & ~(1 << op_yyy));
             cycle = (op_zzz == 6) ? 16 : 8;
             break;
+
         case 3:  // SET
             writeReg(op_zzz, val | (1 << op_yyy));
             cycle = (op_zzz == 6) ? 16 : 8;
             break;
     }
 }
+
+void CpuCore::handle_interrupt(unsigned int& cycle) {
+    uint8_t ie = m_mmu.read(0xFFFF);
+    uint8_t if_reg = m_mmu.read(0xFF0F);
+    uint8_t pending = ie & if_reg & 0x1F;
+
+    if (pending == 0) {
+        return;
+    }
+
+    m_halted = false;
+
+    if (!m_ime) {
+        return;
+    }
+
+    for (int bit = 0; bit < 5; bit++) {
+        if (pending & (1 << bit)) {
+            m_ime = false;
+
+            m_mmu.write(0xFF0F, if_reg & ~(1 << bit));
+
+            push(m_registerFile.PC);
+
+            m_registerFile.PC = 0x0040 + (bit * 8);
+
+            cycle = 20;
+            return;
+        }
+    }
