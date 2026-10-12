@@ -51,6 +51,8 @@ uint8_t CpuCore::readReg(uint8_t index) const {
         case 0b111:
             return m_registerFile.A;
     }
+
+    return 0;
 }
 
 void CpuCore::writeReg(uint8_t index, uint8_t value) {
@@ -97,6 +99,8 @@ uint16_t CpuCore::readRP(uint8_t index, bool flag_SP) const {
                 return getAF();
             }
     }
+
+    return 0;
 }
 
 void CpuCore::writeRP(uint8_t index, uint16_t value, bool flag_SP) {
@@ -210,7 +214,7 @@ void CpuCore::add_a(uint8_t value, bool use_carry) {
 
     uint16_t result = m_registerFile.A + value + carry;
 
-    set_flag_z((result && 0xFF) == 0);
+    set_flag_z((result & 0xFF) == 0);
     set_flag_n(false);
     set_flag_c(result > 0xFF);
     set_flag_h(((m_registerFile.A & 0x0F) + (value & 0x0F) + carry) > 15);
@@ -306,6 +310,7 @@ bool CpuCore::cc_check(uint8_t index) {
         case 0b11:
             return get_flag_c() == true;
     }
+    return 0;
 }
 
 uint16_t CpuCore::fetch16() {
@@ -342,25 +347,28 @@ void CpuCore::step(unsigned int& cycle) {
     m_opCode = m_mmu.read(m_registerFile.PC);
     m_registerFile.PC++;
 
-    uint8_t op_xx{(m_opCode >> 6) & 0x3};   //  6. and 7. bit
-    uint8_t op_yyy{(m_opCode >> 3) & 0x7};  // 3. 4. and 5. bit
-    uint8_t op_zzz{m_opCode & 0x7};         // 0. 1. and 2. bit
-    uint8_t op_q{op_yyy & 0b1};             // 3. bit
-    uint8_t op_pp{op_yyy >> 1};             // 4. and 5. bit
+    uint8_t op_xx = (m_opCode >> 6) & 0x3;   //  6. and 7. bit
+    uint8_t op_yyy = (m_opCode >> 3) & 0x7;  // 3. 4. and 5. bit
+    uint8_t op_zzz = m_opCode & 0x7;         // 0. 1. and 2. bit
+    uint8_t op_q = op_yyy & 0b1;             // 3. bit
+    uint8_t op_pp = op_yyy >> 1;             // 4. and 5. bit
 
     switch (op_xx) {
         case 0b00:
             switch (op_zzz) {
-                case 0b000:  // completed except stop instruction
+                case 0b000:  // completed
                     switch (op_yyy) {
                         case 0:  // NOP no operation
                             cycle = 4;
                             break;
 
-                        case 1:  // LD [a16], SP
-                            m_mmu.write(fetch16(), m_registerFile.SP);
+                        case 1: {  // LD [a16], SP
+                            uint16_t addr = fetch16();
+                            m_mmu.write(addr, m_registerFile.SP & 0x00FF);
+                            m_mmu.write(addr + 1, m_registerFile.SP >> 8);
                             cycle = 20;
                             break;
+                        }
 
                         case 2:  // STOP
                             m_registerFile.PC++;
@@ -448,7 +456,7 @@ void CpuCore::step(unsigned int& cycle) {
 
                 case 0b011:
                     cycle = 8;
-                    if (op_q) {
+                    if (op_q == 0) {
                         incRP(op_pp);
                     } else {
                         decRP(op_pp);
@@ -584,8 +592,7 @@ void CpuCore::step(unsigned int& cycle) {
                 cycle = 4;
             break;
 
-        case 0b10:  // 8 bit alu instrucitons
-
+        case 0b10: {  // 8 bit alu instrucitons
             uint8_t alu_val = readReg(op_zzz);
             cycle = (op_zzz == 0b110) ? 8 : 4;
 
@@ -616,6 +623,7 @@ void CpuCore::step(unsigned int& cycle) {
                     break;
             }
             break;
+        }
 
         case 0b11:
             switch (op_zzz) {
@@ -869,15 +877,14 @@ void CpuCore::step_CB(unsigned int& cycle) {
     m_opCode = m_mmu.read(m_registerFile.PC);
     m_registerFile.PC++;
 
-    uint8_t op_xx{(m_opCode >> 6) & 0x3};   //  6. and 7. bit
-    uint8_t op_yyy{(m_opCode >> 3) & 0x7};  // 3. 4. and 5. bit
-    uint8_t op_zzz{m_opCode & 0x7};
-
+    uint8_t op_xx = (m_opCode >> 6) & 0x3;   //  6. and 7. bit
+    uint8_t op_yyy = (m_opCode >> 3) & 0x7;  // 3. 4. and 5. bit
+    uint8_t op_zzz = m_opCode & 0x7;
+    uint8_t val = readReg(op_zzz);
+    uint8_t result{};
     switch (op_xx) {
-        uint8_t val = readReg(op_zzz);
-
         case 0:
-            uint8_t result{};
+
             cycle = (op_zzz == 6) ? 16 : 8;
             switch (op_yyy) {
                 case 0: {  // RLC
@@ -987,3 +994,17 @@ void CpuCore::handle_interrupt(unsigned int& cycle) {
             return;
         }
     }
+}
+
+void CpuCore::reset() {
+    m_registerFile.PC = 0x0100;
+    m_registerFile.SP = 0xFFFE;
+    m_registerFile.A = 0x01;
+    m_registerFile.F = 0xB0;
+    m_registerFile.B = 0x00;
+    m_registerFile.C = 0x13;
+    m_registerFile.D = 0x00;
+    m_registerFile.E = 0xD8;
+    m_registerFile.H = 0x01;
+    m_registerFile.L = 0x4D;
+}

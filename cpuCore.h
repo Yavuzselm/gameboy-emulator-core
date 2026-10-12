@@ -15,8 +15,6 @@ struct RegisterFile {
     uint8_t F{};
     uint8_t H{};
     uint8_t L{};
-    uint8_t IR{};
-    uint8_t IE{};
 };
 
 class CpuCore {
@@ -81,4 +79,5 @@ class CpuCore {
     void step(unsigned int& cycle);
     void step_CB(unsigned int& cycle);
     void handle_interrupt(unsigned int& cycle);
+    void reset();
 };
