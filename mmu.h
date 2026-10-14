@@ -5,6 +5,8 @@
 #include <iostream>
 #include <string>
 
+class Timers;
+
 class MMU {
    private:
     uint8_t m_wram[8192]{};
@@ -17,8 +19,13 @@ class MMU {
     uint8_t m_ie{};
     uint8_t m_if{};
 
+    Timers& m_timer;
+
    public:
-    uint8_t read(uint16_t adress);
-    void write(uint16_t adress, uint8_t data);
+    MMU(Timers& timer) : m_timer{timer} {};
+
+    uint8_t read(const uint16_t adress);
+    void write(const uint16_t adress, uint8_t data);
     void load_rom(const std::string& rom_name);
+    void request_interrupt(const uint8_t interrupt);
 };

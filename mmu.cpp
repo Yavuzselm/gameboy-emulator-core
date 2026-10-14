@@ -1,6 +1,8 @@
 #include "mmu.h"
 
-uint8_t MMU::read(uint16_t adress) {
+#include "timers.h"
+
+uint8_t MMU::read(const uint16_t adress) {
     if (adress == 0xFF44) {
         return 0x90;
     }
@@ -39,12 +41,16 @@ uint8_t MMU::read(uint16_t adress) {
 
     else if (adress < 0xFF80) {  // io registers -- will complete later
         switch (adress) {
+            case 0xFF04:
+            case 0xFF05:
+            case 0xFF06:
+            case 0xFF07:
+                return m_timer.read(adress);
+
             case 0xFF0F:
-                return m_if;
-                break;
+                return m_if;  // interrupt rgister
             default:
                 return 0xFF;
-                break;
         }
     }
 
@@ -57,7 +63,7 @@ uint8_t MMU::read(uint16_t adress) {
     }
 }
 
-void MMU::write(uint16_t adress, uint8_t data) {
+void MMU::write(const uint16_t adress, uint8_t data) {
     if (adress == 0xFF01) {
         std::cout << static_cast<char>(data) << std::flush;
     }
@@ -96,6 +102,12 @@ void MMU::write(uint16_t adress, uint8_t data) {
 
     else if (adress < 0xFF80) {  // io registers -- will complete later
         switch (adress) {
+            case 0xFF04:
+            case 0xFF05:
+            case 0xFF06:
+            case 0xFF07:
+                m_timer.write(adress, data);
+                break;
             case 0xFF0F:
                 m_if = data;
                 break;
@@ -129,3 +141,5 @@ void MMU::load_rom(const std::string& rom_name) {
 
     rom.close();
 }
+
+void MMU::request_interrupt(const uint8_t interrupt) { m_if |= interrupt; }
