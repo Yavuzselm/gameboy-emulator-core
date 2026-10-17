@@ -5,6 +5,10 @@
 #include <iostream>
 #include <string>
 
+#include "cartridge.h"
+#include "ppu.h"
+#include "timers.h"
+
 class Timers;
 class PPU;
 
@@ -13,21 +17,17 @@ class MMU {
     uint8_t m_wram[8192]{};
     uint8_t m_hram[128]{};
 
-    uint8_t m_rom_0[16384]{};
-    uint8_t m_rom_switchable[16384]{};
-    uint8_t m_rom_save[8192]{};
-
     uint8_t m_ie{};
     uint8_t m_if{};
 
     Timers& m_timer;
     PPU& m_ppu;
+    std::unique_ptr<Cartridge> m_cartridge;
 
    public:
-    MMU(Timers& timer, PPU& ppu);
+    MMU(Timers& timer, PPU& ppu, const std::string& path);
 
     uint8_t read(const uint16_t adress);
     void write(const uint16_t adress, uint8_t data);
-    void load_rom(const std::string& rom_name);
     void request_interrupt(const uint8_t interrupt);
 };

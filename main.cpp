@@ -3,6 +3,7 @@
 
 #include "cpuCore.h"
 #include "mmu.h"
+#include "ppu.h"
 #include "timers.h"
 
 int main(int argc, char* argv[]) {
@@ -13,10 +14,10 @@ int main(int argc, char* argv[]) {
 
     std::string rom_name = argv[1];
 
+    PPU ppu{};
     Timers timers{};
-    MMU mmu(timers);
+    MMU mmu(timers, ppu, rom_name);
 
-    mmu.load_rom(rom_name);
     CpuCore cpu(mmu);
     cpu.reset();
 

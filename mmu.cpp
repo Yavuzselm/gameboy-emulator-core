@@ -1,17 +1,12 @@
 #include "mmu.h"
 
-#include "ppu.h"
-#include "timers.h"
-
-MMU::MMU(Timers& timer, PPU& ppu) : m_timer{timer}, m_ppu{ppu} {};
+MMU::MMU(Timers& timer, PPU& ppu, const std::string& path) : m_timer{timer}, m_ppu{ppu} {
+    m_cartridge = createCartridge(path);
+}
 
 uint8_t MMU::read(const uint16_t address) {
-    if (address < 0x4000) {
-        return m_rom_0[address];
-    }
-
-    else if (address < 0x8000) {
-        return m_rom_switchable[address - 0x4000];
+    if (address < 0x8000) {
+        return m_cartridge->read_rom(address);
     }
 
     else if (address < 0xA000) {
@@ -19,7 +14,7 @@ uint8_t MMU::read(const uint16_t address) {
     }
 
     else if (address < 0xC000) {
-        return m_rom_save[address - 0xA000];
+        return m_cartridge->read_ram(address);
     }
 
     else if (address < 0xE000) {
@@ -81,12 +76,8 @@ void MMU::write(const uint16_t address, uint8_t data) {
         std::cout << static_cast<char>(data) << std::flush;
     }
 
-    if (address < 0x4000) {
-        return;
-    }
-
-    else if (address < 0x8000) {
-        return;
+    if (address < 0x8000) {
+        m_cartridge->write_rom(address, data);
     }
 
     else if (address < 0xA000) {
@@ -94,7 +85,7 @@ void MMU::write(const uint16_t address, uint8_t data) {
     }
 
     else if (address < 0xC000) {
-        m_rom_save[address - 0xA000] = data;
+        m_cartridge->write_ram(address, data);
     }
 
     else if (address < 0xE000) {
@@ -162,22 +153,6 @@ void MMU::write(const uint16_t address, uint8_t data) {
     else {
         m_ie = data;
     }
-}
-
-void MMU::load_rom(const std::string& rom_name) {
-    std::ifstream rom(rom_name, std::ios::binary);
-
-    if (!rom) {
-        std::cerr << "unable to load the rom";
-
-        return;
-    }
-
-    rom.read(reinterpret_cast<char*>(m_rom_0), 16384);
-
-    rom.read(reinterpret_cast<char*>(m_rom_switchable), 16384);
-
-    rom.close();
 }
 
 void MMU::request_interrupt(const uint8_t interrupt) { m_if |= interrupt; }
