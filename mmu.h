@@ -6,6 +6,7 @@
 #include <string>
 
 class Timers;
+class PPU;
 
 class MMU {
    private:
@@ -20,9 +21,10 @@ class MMU {
     uint8_t m_if{};
 
     Timers& m_timer;
+    PPU& m_ppu;
 
    public:
-    MMU(Timers& timer) : m_timer{timer} {};
+    MMU(Timers& timer, PPU& ppu);
 
     uint8_t read(const uint16_t adress);
     void write(const uint16_t adress, uint8_t data);
