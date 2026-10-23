@@ -61,7 +61,6 @@ int main(int argc, char* argv[]) {
 
         auto frame_end = std::chrono::steady_clock::now();
         auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(frame_end - frame_begin);
-        // std::cout << "elapsed time : " << elapsed_time.count() << '\n';
 
         if (elapsed_time < target_frame_time) {
             auto to_wait_time = target_frame_time - elapsed_time;
@@ -76,7 +75,6 @@ int main(int argc, char* argv[]) {
 
             auto full_frame =
                 std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - frame_begin);
-            // std::cout << "Full frame: " << full_frame.count() << " us\n";
         }
     }
     timeEndPeriod(1);
