@@ -79,11 +79,13 @@ void PPU::write_reg(const uint16_t address, const uint8_t data) {
     return;
 }
 
-bool PPU::step(unsigned int& cycle) {
+uint8_t PPU::step(unsigned int& cycle) {
+    uint8_t interrupts = 0;
+
     if ((m_lcdc & 0x80) == 0) {
         m_ly = 0;
         m_cycle_counter = 0;
-        return false;
+        return 0;
     }
 
     m_cycle_counter += cycle;
@@ -99,7 +101,11 @@ bool PPU::step(unsigned int& cycle) {
         m_ly++;
 
         if (m_ly == 144) {
-            return true;
+            interrupts |= 0x01;
+        }
+
+        if (m_ly == m_lyc && (m_stat & 0x40)) {
+            interrupts |= 0x02;
         }
 
         if (m_ly == 154) {
@@ -107,9 +113,8 @@ bool PPU::step(unsigned int& cycle) {
         }
     }
 
-    return false;
+    return interrupts;
 }
-
 void PPU::set_mode() {
     uint8_t mode{};
 
@@ -125,9 +130,6 @@ void PPU::set_mode() {
 
     m_stat &= 0xF8;
     m_stat |= mode;
-    if (m_ly == m_lyc) {
-        m_stat |= 0x04;
-    }
 }
 
 void PPU::scan_line() {
@@ -247,3 +249,5 @@ void PPU::scan_line() {
         }
     }
 }
+
+const uint32_t* PPU::get_buffer() const { return m_framebuffer; }

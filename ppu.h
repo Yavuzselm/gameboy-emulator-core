@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <iostream>
 
 class PPU {
    private:
@@ -31,6 +32,7 @@ class PPU {
     void write_oam(const uint16_t address, const uint8_t data);
     uint8_t read_reg(const uint16_t address);
     void write_reg(const uint16_t address, const uint8_t data);
-    bool step(unsigned int& cycle);
+    uint8_t step(unsigned int& cycle);
+    const uint32_t* get_buffer() const;
     void scan_line();
 };

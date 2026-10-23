@@ -72,10 +72,6 @@ uint8_t MMU::read(const uint16_t address) {
 }
 
 void MMU::write(const uint16_t address, uint8_t data) {
-    if (address == 0xFF01) {
-        std::cout << static_cast<char>(data) << std::flush;
-    }
-
     if (address < 0x8000) {
         m_cartridge->write_rom(address, data);
     }
