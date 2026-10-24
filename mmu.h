@@ -6,11 +6,10 @@
 #include <string>
 
 #include "cartridge.h"
+#include "joypad.h"
 #include "ppu.h"
 #include "timers.h"
-
 class Timers;
-class PPU;
 
 class MMU {
    private:
@@ -22,10 +21,11 @@ class MMU {
 
     Timers& m_timer;
     PPU& m_ppu;
+    Joypad& m_joypad;
     std::unique_ptr<Cartridge> m_cartridge;
 
    public:
-    MMU(Timers& timer, PPU& ppu, const std::string& path);
+    MMU(Timers& timer, PPU& ppu, Joypad& joypad, const std::string& path);
 
     uint8_t read(const uint16_t adress);
     void write(const uint16_t adress, uint8_t data);

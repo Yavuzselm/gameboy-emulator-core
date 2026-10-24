@@ -15,7 +15,7 @@ bool Renderer::initiate() {
         return false;
     }
 
-    window = SDL_CreateWindow("MyTitle", 160, 144, 0);
+    window = SDL_CreateWindow("frametime_test", 640, 576, SDL_WINDOW_RESIZABLE);
     if (!window) {
         std::cout << SDL_GetError();
         return false;
@@ -26,8 +26,10 @@ bool Renderer::initiate() {
         std::cout << SDL_GetError();
         return false;
     }
+    SDL_SetRenderLogicalPresentation(renderer, 160, 144, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
 
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, 160, 144);
+    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
 
     if (!texture) {
         std::cout << SDL_GetError();

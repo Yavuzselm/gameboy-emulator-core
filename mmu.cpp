@@ -1,6 +1,7 @@
 #include "mmu.h"
 
-MMU::MMU(Timers& timer, PPU& ppu, const std::string& path) : m_timer{timer}, m_ppu{ppu} {
+MMU::MMU(Timers& timer, PPU& ppu, Joypad& joypad, const std::string& path)
+    : m_timer{timer}, m_ppu{ppu}, m_joypad{joypad} {
     m_cartridge = createCartridge(path);
 }
 
@@ -35,6 +36,8 @@ uint8_t MMU::read(const uint16_t address) {
 
     else if (address < 0xFF80) {  // io registers -- will complete later
         switch (address) {
+            case 0xFF00:
+                return m_joypad.read();
             case 0xFF04:
             case 0xFF05:
             case 0xFF06:
@@ -102,6 +105,10 @@ void MMU::write(const uint16_t address, uint8_t data) {
 
     else if (address < 0xFF80) {  // io registers -- will complete later
         switch (address) {
+            case 0xFF00:
+                m_joypad.write(data);
+                break;
+
             case 0xFF04:
             case 0xFF05:
             case 0xFF06:
