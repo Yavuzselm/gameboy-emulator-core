@@ -1,13 +1,13 @@
-# Test ROM'larını içeren klasörü tamamen yoksay (sonuna / koymak klasör olduğunu belirtir)
 test_roms/
-
-# Veya klasör dışına da ROM atarsanız diye uzantı bazlı yoksayma (isteğe bağlı, örn: .ch8, .gb, .nes)
+build/
+.vs/
+.vscode/
+*.gb
+*.gbc
 *.ch8
 *.rom
-
-# C++ derleme çıktılarını da Git'e atmamak için eklemeniz önerilir:
 *.exe
 *.out
 *.o
 *.obj
-build/
+chat_history_export.md
