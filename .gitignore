@@ -10,4 +10,5 @@ build/
 *.out
 *.o
 *.obj
+*.zip
 chat_history_export.md
